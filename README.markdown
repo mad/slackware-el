@@ -21,11 +21,12 @@ Add to your init file this string:
 
 # Using
 
-u - update package
-i - install pakcage
-r - remove package
-n - next package
-p - previous package
+- `g` - update list
+- `u` - update package
+- `i` - install pakcage
+- `r` - remove package
+- `n` - next package
+- `p` - previous package
 
 # BUG
 

@@ -41,7 +41,7 @@
 
 ;; - if package begining xf86-video-* or xorg-server-* (maybe other)
 ;;   then first package (witch match xf86-video-VERSION-ARCH-BUILD)
-;;    marked conflict
+;;   marked conflict
 
 ;;; TODO:
 
@@ -122,10 +122,11 @@
   "face for displaying security fix"
   :group 'slackware-faces)
 
-(defun slackware-changelog ()
+(defun slackware-mode ()
   "Slackware ChangeLog mode"
   (interactive)
   (switch-to-buffer slackware-buffer)
+  (use-local-map slackware-mode-map)
   (delete-region (point-min) (point-max))
   (save-excursion
     (insert-file (concat slackware-mirror-root "/ChangeLog.txt"))
@@ -187,10 +188,6 @@
     (define-key map "q" 'slackware-quit)
     map)
   "Keymap for `slackware-mode'.")
-
-(define-derived-mode slackware-mode text-mode
-  "Slackware ChangeLog mode"
-  "Major mode for Slackware ChangeLog mode")
 
 (defun slackware-info ()
   (interactive)

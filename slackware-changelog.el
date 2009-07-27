@@ -4,7 +4,7 @@
 
 ;; Author:  <owner.mad.epa@gmail.com>
 ;; Version: 0.1
-;; Keywords: slackware, pkg
+;; Keywords: slackware
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -21,13 +21,34 @@
 
 ;;; Commentary:
 
-;;
+;; This package work only (?) local mirrors.
+
+;; If your have get local mirror slackware repo, run this string:
+
+;; rsync -P --delete -avzlhH  mirror.yandex.ru::slackware/slackware-current /pub/mirrors/
+
+;; where /pub/mirrors is yout local dir and add here string to crontab
+
+;;; Installing:
+
+;; add to your init file this string:
+
+;; (add-to-list 'load-path "/path/to/slackware-changelog/")
+;; (require 'slackware-changelog)
+;; (setq slackware-mirror-root "/path/to/mirror/slckware/")
+
+;;; BUG:
+
+;; - if package begining xf86-video-* or xorg-server-* (maybe other)
+;;   then first package (witch match xf86-video-VERSION-ARCH-BUILD)
+;;    marked conflict
 
 ;;; TODO:
 
-;; + simple highlight
-;; + keystroke to add/remove/upgrade (use pkgtools)
-;; - realy install
+;; - install/remove/update from emacs
+;; - work with remote repo
+;; - show info about other package (not official repo)
+;; - check broken version (e.g. r994599)
 
 ;;; Code:
 
@@ -39,13 +60,31 @@
   "Path to your mirror slackware repo
 \(e.g. /pub/mirrors/slackware-current/\)")
 
-(defvar slackware-buffer " *slackware-changelog*")
+(defvar slackware-buffer "*slackware-changelog*")
 
 (defvar slackware-pkg-regex "\\(.*-[0-9]+\\.\\(txz\\|tgz\\)\\):")
 
-(defface slackware-face-archive
+(defvar slackware-changelog-field 10
+  "Print last ten field of ChangeLog")
+
+(defface slackware-face-pkg-normal
   '((t (:weight bold :foreground "blue")))
-  "face for displaying archive package"
+  "face for displaying normal package"
+  :group 'slackware-faces)
+
+(defface slackware-face-pkg-conflict
+  '((t (:background "red" :foreground "black")))
+  "face for displaying conflict package"
+  :group 'slackware-faces)
+
+(defface slackware-face-pkg-version-less
+  '((t (:slant italic :foreground "red4")))
+  "face for displaying less version package"
+  :group 'slackware-faces)
+
+(defface slackware-face-pkg-not-exist
+  '((t (:slant italic :foreground "gray50")))
+  "face for displaying not exist package"
   :group 'slackware-faces)
 
 (defface slackware-face-upgraded
@@ -84,16 +123,25 @@
   :group 'slackware-faces)
 
 (defun slackware-changelog ()
-  "slackware changelog mode"
+  "Slackware ChangeLog mode"
   (interactive)
   (switch-to-buffer slackware-buffer)
   (delete-region (point-min) (point-max))
-  (insert-file (concat slackware-mirror-root "/ChangeLog.txt"))
-  (goto-char (point-min))
   (save-excursion
+    (insert-file (concat slackware-mirror-root "/ChangeLog.txt"))
+    (delete-region (search-forward "+--------------------------+"
+                                   nil t slackware-changelog-field)
+                   (point-max)))
+  (slackware-markup)
+  (toggle-read-only)
+  (slackware-mode))
+
+(defun slackware-markup ()
+  (save-excursion
+    (goto-char (point-min))
     (while (re-search-forward slackware-pkg-regex nil t)
       (set-text-properties (match-beginning 1) (match-end 1)
-                           `(face slackware-face-archive)))
+                           (slackware-pkg-check (match-string-no-properties 1))))
     (goto-char (point-min))
     (while (re-search-forward "\\(Rebuilt\\)\\|\\(Upgraded\\)\\|\\(Added\\)\\|\\(Removed\\)\\|\\(Fixed\\)\\|\\(Patched\\)" nil t)
       (cond
@@ -118,13 +166,13 @@
     (goto-char (point-min))
     (while (re-search-forward "\(\\* Security fix \\*\)" nil t)
       (set-text-properties (match-beginning 0) (match-end 0)
-                           `(face slackware-face-security))))
-  (setq buffer-read-only t)
-  (slackware-mode))
+                           `(face slackware-face-security)))))
 
-(define-derived-mode slackware-mode text-mode
-  "Slackware ChangeLog mode"
-  "Major mode for Slackware ChangeLog mode")
+(defun slackware-changelog-update ()
+  (interactive)
+  (toggle-read-only nil)
+  (slackware-markup)
+  (toggle-read-only))
 
 (defvar slackware-mode-map
   (let ((map (make-sparse-keymap)))
@@ -132,14 +180,17 @@
     (define-key map "i" 'slackware-install)
     (define-key map "r" 'slackware-remove)
     (define-key map "u" 'slackware-upgrade)
-    (define-key map "g" 'slackware-info)
+    (define-key map "g" 'slackware-changelog-update)
+    (define-key map "h" 'slackware-info)
     (define-key map "n" 'slackware-next-pkg)
     (define-key map "p" 'slackware-previous-pkg)
     (define-key map "q" 'slackware-quit)
     map)
   "Keymap for `slackware-mode'.")
 
-(define-key slackware-mode-map "g" 'slackware-info)
+(define-derived-mode slackware-mode text-mode
+  "Slackware ChangeLog mode"
+  "Major mode for Slackware ChangeLog mode")
 
 (defun slackware-info ()
   (interactive)
@@ -159,11 +210,13 @@
   (save-excursion
     (move-beginning-of-line 1)
     (if (re-search-forward slackware-pkg-regex nil t)
-        (let ((pkg (match-string-no-properties 1)))
-          (message (concat "Trying install " slackware-mirror-root
-                           (if (string-match "extra/" pkg)
+        (let* ((pkg (match-string-no-properties 1))
+               (pkg (if (string-match "extra/" pkg)
                                pkg
-                             (concat "slackware/" pkg)))))
+                      (concat "slackware/" pkg)))
+               (pkg (concat slackware-mirror-root pkg)))
+          (kill-new (concat "sudo installpkg " pkg))
+          (message "Install command save to kill-ring"))
       (message "Package not found"))))
 
 (defun slackware-remove ()
@@ -171,24 +224,76 @@
   (save-excursion
     (move-beginning-of-line 1)
     (if (re-search-forward slackware-pkg-regex nil t)
-        (let ((pkg (match-string-no-properties 1)))
-          (message (concat "Trying remove " slackware-mirror-root
-                           (if (string-match "extra/" pkg)
+        (let* ((pkg (match-string-no-properties 1))
+               (pkg (if (string-match "extra/" pkg)
                                pkg
-                             (concat "slackware/" pkg)))))
+                      (concat "slackware/" pkg)))
+               (pkg (concat slackware-mirror-root pkg)))
+          (kill-new (concat "sudo removepkg " pkg))
+          (message "Remove command save to kill-ring"))
       (message "Package not found"))))
 
 (defun slackware-upgrade ()
   (interactive)
   (save-excursion
     (move-beginning-of-line 1)
-    (if (re-search-forward slackware-pkg-regex nil t)
-        (let ((pkg (match-string-no-properties 1)))
-          (message (concat "Trying upgrade " slackware-mirror-root
-                           (if (string-match "extra/" pkg)
+        (if (re-search-forward slackware-pkg-regex nil t)
+        (let* ((pkg (match-string-no-properties 1))
+               (pkg (if (string-match "extra/" pkg)
                                pkg
-                             (concat "slackware/" pkg)))))
+                      (concat "slackware/" pkg)))
+               (pkg (concat slackware-mirror-root pkg)))
+          (kill-new (concat "sudo upgradepkg " pkg))
+          (message "Upgrade command save to kill-ring"))
       (message "Package not found"))))
+
+(defun slackware-pkg-check (pkg-name)
+  (let* ((pkg-var (progn
+                    ;; PATH/TO/PKG_NAME-VERSION-ARCH-BUILD.prefix
+                    (string-match "\\(.*/\\)?\\(\\(.*\\)-\\(.*\\)-.*-.*\\)\\..*" pkg-name)
+                    (list (match-string 2 pkg-name)    ;; pkg-name with prefix
+                          (match-string 3 pkg-name)    ;; real pkg-name
+                          (match-string 4 pkg-name)))) ;; pkg version
+         (pkg-name (nth 0 pkg-var))
+         (pkg-real-name (nth 1 pkg-var))
+         (pkg-version (nth 2 pkg-var))
+         ;; stripping _smp or _git version
+         (pkg-version (if (string-match-p "_" pkg-version)
+                          (substring pkg-version 0
+                                     (string-match "_" pkg-version))
+                        pkg-version)))
+    (if (file-exists-p (concat "/var/log/packages/" pkg-name))
+        `(face slackware-face-pkg-normal)
+      (let* ((maybe-pkg (file-expand-wildcards
+                         (concat "/var/log/packages/" pkg-real-name "*")))
+             (maybe-pkg-conflict (if (> (length maybe-pkg) 1) t nil))
+             (maybe-pkg-exist (if (= (length maybe-pkg) 1) t nil))
+             (maybe-pkg (if maybe-pkg-exist (car maybe-pkg)))
+             (maybe-pkg-var
+              (when maybe-pkg-exist
+                ;; PATH/TO/PKG_NAME-VERSION-ARCH-BUILD
+                (string-match "\\(.*\\)?/\\(.*\\)-\\(.*\\)-.*-.*$"  maybe-pkg)
+                (list (match-string 2 maybe-pkg) (match-string 3 maybe-pkg))))
+             (maybe-pkg-name (if maybe-pkg-exist (nth 0 maybe-pkg-var)))
+             (maybe-pkg-version (if maybe-pkg-exist (nth 1 maybe-pkg-var)))
+             ;; stripping _smp or _git version
+             (maybe-pkg-version (if maybe-pkg-exist
+                                    (substring maybe-pkg-version 0
+                                               (or (string-match "_" maybe-pkg-version)
+                                                   (length maybe-pkg-version)))
+                                  maybe-pkg-version)))
+        (cond
+         (maybe-pkg-conflict
+          `(face slackware-face-pkg-conflict))
+         ((not maybe-pkg-exist)
+          `(face slackware-face-pkg-not-exist))
+         ;; FIXME: found broken version (e.g. r994599)
+         ((condition-case nil
+              (if (version< maybe-pkg-version pkg-version)
+                  `(face slackware-face-pkg-version-less))
+            (error nil)))
+         (t
+          `(face slackware-face-pkg-normal)))))))
 
 (defun slackware-next-pkg ()
   (interactive)

@@ -130,8 +130,10 @@
   (delete-region (point-min) (point-max))
   (save-excursion
     (insert-file (concat slackware-mirror-root "/ChangeLog.txt"))
-    (delete-region (search-forward "+--------------------------+"
-                                   nil t slackware-changelog-field)
+    (goto-char (point-min))
+    (delete-region (or (search-forward "+--------------------------+"
+                                       nil t slackware-changelog-field)
+                       (point-max))
                    (point-max)))
   (slackware-markup)
   (toggle-read-only)

@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2009
 
-;; Author:  <owner.mad.epa@gmail.com>
+;; Author:  mad <owner.mad.epa@gmail.com>
 ;; Version: 0.1
 ;; Keywords: slackware
 
@@ -27,7 +27,8 @@
 
 ;; rsync -P --delete -avzlhH  mirror.yandex.ru::slackware/slackware-current /pub/mirrors/
 
-;; where /pub/mirrors is yout local dir and add here string to crontab
+;; where /pub/mirrors is your local dir (you can add this string to
+;; crontab)
 
 ;;; Installing:
 
@@ -247,16 +248,17 @@
       (message "Package not found"))))
 
 (defun slackware-pkg-check (pkg-name)
-  (let* ((pkg-var (progn
-                    ;; PATH/TO/PKG_NAME-VERSION-ARCH-BUILD.prefix
-                    (string-match "\\(.*/\\)?\\(\\(.*\\)-\\(.*\\)-.*-.*\\)\\..*" pkg-name)
-                    (list (match-string 2 pkg-name)    ;; pkg-name with prefix
-                          (match-string 3 pkg-name)    ;; real pkg-name
-                          (match-string 4 pkg-name)))) ;; pkg version
+  (let* ((pkg-var
+          (progn
+            ;; PATH/TO/PKG_NAME-VERSION-ARCH-BUILD.ARCHIVE
+            (string-match "\\(.*/\\)?\\(\\(.*\\)-\\([0-9][^-]+\\)-\\([^-]+\\)-\\([0-9]+\\)\\)" pkg-name)
+            (list (match-string 2 pkg-name)    ;; pkg-name with prefix
+                  (match-string 3 pkg-name)    ;; real pkg-name
+                  (match-string 4 pkg-name)))) ;; pkg version
          (pkg-name (nth 0 pkg-var))
          (pkg-real-name (nth 1 pkg-var))
          (pkg-version (nth 2 pkg-var))
-         ;; stripping _smp or _git version
+         ;; strip _smp or _git version or svn ?
          (pkg-version (if (string-match-p "_" pkg-version)
                           (substring pkg-version 0
                                      (string-match "_" pkg-version))
@@ -264,18 +266,19 @@
     (if (file-exists-p (concat "/var/log/packages/" pkg-name))
         `(face slackware-face-pkg-normal)
       (let* ((maybe-pkg (file-expand-wildcards
-                         (concat "/var/log/packages/" pkg-real-name "*")))
+                         (concat "/var/log/packages/" pkg-real-name "-[0-9]" "*")))
              (maybe-pkg-conflict (if (> (length maybe-pkg) 1) t nil))
              (maybe-pkg-exist (if (= (length maybe-pkg) 1) t nil))
              (maybe-pkg (if maybe-pkg-exist (car maybe-pkg)))
              (maybe-pkg-var
               (when maybe-pkg-exist
+                (message "%s" maybe-pkg)
                 ;; PATH/TO/PKG_NAME-VERSION-ARCH-BUILD
-                (string-match "\\(.*\\)?/\\(.*\\)-\\(.*\\)-.*-.*$"  maybe-pkg)
+                (string-match "\\(.*/\\)?\\(.*\\)-\\([0-9][^-]+\\)-\\([^-]+\\)-\\([0-9]+\\)$"  maybe-pkg)
                 (list (match-string 2 maybe-pkg) (match-string 3 maybe-pkg))))
              (maybe-pkg-name (if maybe-pkg-exist (nth 0 maybe-pkg-var)))
              (maybe-pkg-version (if maybe-pkg-exist (nth 1 maybe-pkg-var)))
-             ;; stripping _smp or _git version
+             ;; strip _smp or _git version
              (maybe-pkg-version (if maybe-pkg-exist
                                     (substring maybe-pkg-version 0
                                                (or (string-match "_" maybe-pkg-version)
@@ -286,7 +289,8 @@
           `(face slackware-face-pkg-conflict))
          ((not maybe-pkg-exist)
           `(face slackware-face-pkg-not-exist))
-         ;; FIXME: found broken version (e.g. r994599)
+         ;; FIXME: found broken version (e.g. r994599); fixup version
+         ;; string; delete all except digit
          ((condition-case nil
               (if (version< maybe-pkg-version pkg-version)
                   `(face slackware-face-pkg-version-less))
